@@ -6,13 +6,16 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.security.Principal;
-
+import java.util.Optional;
 
 import javax.servlet.http.HttpSession;
+import javax.websocket.Session;
 
+import org.hibernate.sql.Delete;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 
@@ -30,6 +33,7 @@ import com.smart.entity.Contact;
 import com.smart.entity.User;
 import com.smart.helper.Message;
 
+
 import   org.springframework.data.domain.Page;
 
 
@@ -39,11 +43,16 @@ import   org.springframework.data.domain.Page;
 @RequestMapping("/user")
 public class UserController {
 
+	
 	@Autowired
 	private UserRepository UserRepository;
 	
 	@Autowired
 	private ContactRespository ContactRespository;
+	
+	@Autowired
+	private BCryptPasswordEncoder BCryptPasswordEncoder;
+	
 	
 	@ModelAttribute
 	public void addcommonData(Model model,Principal principal) {
@@ -84,6 +93,7 @@ public class UserController {
 				// if the file is empty try our message
 
 				System.out.println("empty image .....");
+				contact.setImage("contact.png");
 
 			} else {
 				contact.setImage(file.getOriginalFilename());
@@ -115,6 +125,7 @@ public class UserController {
 	/* show contact detail */
 	@GetMapping("/show-contacts/{page}")
 	public String showContacts(@PathVariable("page") Integer page,Model model, Principal principal) {
+		System.out.println("hiii.....");
 		model.addAttribute("title", "view contacts");
 		
 		  String username = principal.getName();
@@ -129,4 +140,101 @@ public class UserController {
 		return "normal/show_contacts";
 	}
 	
+	/* showing particular contact details */
+	@RequestMapping("/contact/{cId}")
+	public String showContactDetail(@PathVariable("cId") Integer cId,Model model,Principal principal) {
+		Optional<Contact> contactOptional=this.ContactRespository.findById(cId);
+		Contact contact=contactOptional.get();
+		String userName=principal.getName();
+		User user=this.UserRepository.getUserByUserName(userName);
+		if(user.getId()==contact.getUser().getId())
+		{model.addAttribute(contact);}
+		
+		return "normal/contact";
+		
+	}
+	
+	
+	/* Delete contact */
+	
+	@GetMapping("/delete/{cid}")
+	public String deleteContact(@PathVariable("cid") Integer cid,Model model,HttpSession session) {
+		Optional<Contact> conOptional=this.ContactRespository.findById(cid);
+		Contact contact=conOptional.get();
+		this.ContactRespository.delete(contact);
+	    session.setAttribute("message",new Message("Contact deleted successfully....", "success"));
+		return "redirect:/user/show-contacts/0";
+	}
+	
+	
+	/* update contact */
+	@PostMapping("/update/{cid}")
+	public String updateContact(@PathVariable("cid") Integer cid,Model model) {
+	  Contact contact=this.ContactRespository.findById(cid).get();
+	  model.addAttribute(contact);
+		
+		return "normal/update";
+	}
+	
+	/* process-update-contact */
+	@PostMapping("/process-update")
+	public String updateProcess(@ModelAttribute Contact contact,@RequestParam("profileImage") MultipartFile file,
+			Model model,HttpSession session,Principal principal) {
+	try {
+		Contact contact2=this.ContactRespository.findById(contact.getCid()).get();
+		if(!file.isEmpty()) {
+			
+			/* delete old photo */
+			System.out.println(contact2.getImage());
+			
+			/* update new photo */
+			File saveFile = new ClassPathResource("static/image").getFile();
+			Path path = Paths.get(saveFile.getAbsolutePath() + File.separator + file.getOriginalFilename());
+			Files.copy(file.getInputStream(), path, StandardCopyOption.REPLACE_EXISTING);
+			contact.setImage(file.getOriginalFilename());
+		}else {
+			contact.setImage(contact2.getImage());
+		}
+		User user=this.UserRepository.getUserByUserName(principal.getName());
+		contact.setUser(user);
+		this.ContactRespository.save(contact);
+		
+		session.setAttribute("message",new Message("Your Contact Is Updated...","success"));
+	} catch (Exception e) {
+		e.printStackTrace();
+	}	
+	return "redirect:/user/contact/"+contact.getCid();	
+	}
+	
+	@GetMapping("/profile")
+	public String YourProfile() {
+		
+		return "normal/profile";
+	}
+	
+	/* setting */
+	
+	@GetMapping("/settings")
+	public String Setting() {
+		return "normal/setting";
+	}
+	
+	/* change password */
+	
+	@PostMapping("/changepassword")
+	public String changePassword(@RequestParam("oldpassword") String oldpassword,@RequestParam("newpassword") String newpassword,Principal principal,HttpSession session) {
+		
+		String userName=principal.getName();
+		User currentUser=this.UserRepository.getUserByUserName(userName);
+		if(this.BCryptPasswordEncoder.matches(oldpassword,currentUser.getPassword())) {
+			
+			currentUser.setPassword(this.BCryptPasswordEncoder.encode(newpassword));
+			this.UserRepository.save(currentUser);
+			session.setAttribute("message", new Message("Your password is successfully change","success"));
+			
+		}else {
+			session.setAttribute("message", new Message("Please enter correct old password !!","danger"));
+		}
+		return "redirect:/user/index";
+	}
 }
