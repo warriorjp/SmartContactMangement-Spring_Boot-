@@ -43,11 +43,7 @@
     <version>42.2.14</version>
 </dependency>
 
-<plugin>
-    <inherited>true</inherited>
-    <groupId>org.apache.maven.plugins</groupId>
-    <artifactId>maven-compiler-plugin</artifactId>              
-</plugin>
+ 
 
 <!-- 		<dependency>
 			<groupId>mysql</groupId>
